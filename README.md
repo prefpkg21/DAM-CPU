@@ -7,6 +7,8 @@ CPU setup of Xavier and Xavier NX
 - copy the damm_msgs folder into the libraries folder for the Arduino folder (usually in My Documents folder)
 - the settings change sketch is for having an intermediary process between PS4 remote and the opencr board
  - the complete control sketch will have the OpenCr board listen directly to the PS4 without needing to launch an intermediary 
+ - To flash a sketch on OPENCR you will have to reset completely. To do this press and hold the SW2 button, press and release "RESET" button, and then after a second release "SW2"
+ 
 
 ## Xavier
 - Jetpack 4.2.3
