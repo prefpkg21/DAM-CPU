@@ -60,6 +60,7 @@ const int led_2_pin = 12;
 int led1 = 0;
 int led2 = 0;
   uint8_t dxl_id[3] = {DXL_ID_1, DXL_ID_2, DXL_ID_3};
+  int32_t hard_stat[3] = {0, 0, 0};
   int32_t PID_position_p[3] = {300, 900, 950};
   int32_t PID_position_i[3] = {0, 30, 0};
   int32_t return_delay[3] = {0, 0, 0};
@@ -90,7 +91,7 @@ ros::Publisher  position_pub("damm_position",  &srvo_pos_msg);
 bool same_same (int32_t* goal, int32_t* pos, int len_g, int len_p) {
   if (len_g != len_p) return false;
 
-  for (size_t n = 0; n < len_g; n++) if (goal[n]!=pos[n]) return false;
+  for (size_t n = 0; n < len_g; n++) if (abs(goal[n]-pos[n]) > 15) return false;
 
   return true;
 
@@ -102,9 +103,9 @@ void setup()
   pinMode(led_1_pin, OUTPUT);
   pinMode(led_2_pin, OUTPUT);
 
-  digitalWrite(led_1_pin, LOW);
-  digitalWrite(led_2_pin, LOW);
-  nh.getHardware()->setBaud(1000000);
+  digitalWrite(led_1_pin, HIGH); //RED
+  digitalWrite(led_2_pin, LOW);  //GREEN both Yellow
+  //nh.getHardware()->setBaud(1000000);
   nh.initNode();
   //nh.advertise(position_pub);
   nh.subscribe(goal_sub);
@@ -134,6 +135,7 @@ void setup()
   dxl_wb.addSyncWriteHandler(dxl_id[0], "Return_Delay_Time", &log);
   //same for Read
   result = dxl_wb.addSyncReadHandler(dxl_id[0], "Present_Position", &log);
+  result = dxl_wb.addSyncReadHandler(dxl_id[0], "Hardware_Error_Status", &log);
  
   result = dxl_wb.syncWrite(write_handler_index, dxl_id, SRV_COUNT, PID_position_p, 1, &log);
   result = dxl_wb.syncWrite(integral_handler_index, dxl_id, SRV_COUNT, PID_position_i, 1, &log);
@@ -151,8 +153,10 @@ void loop()
 
   //result = dxl_wb.syncWrite(handler_index, &goal_position[0], &log);
   if (!(same_same(goal_position, present_position, SRV_COUNT, SRV_COUNT))) result = dxl_wb.syncWrite(handler_index, dxl_id, SRV_COUNT, goal_position, 1, &log);
-    result = dxl_wb.syncRead(handler_index, &log);
-    result = dxl_wb.getSyncReadData(handler_index, &present_position[0], &log);
+  result = dxl_wb.syncRead(handler_index, &log);
+  result = dxl_wb.getSyncReadData(handler_index, &present_position[0], &log);
+  result = dxl_wb.syncRead(write_handler_index, &log);
+  result = dxl_wb.getSyncReadData(write_handler_index, &hard_stat[0], &log);
 
   //write linear Servo
   if (lin_srvo_goal != lin_srvo_set){
@@ -160,7 +164,7 @@ void loop()
     lin_srvo_set = lin_srvo_goal;
   }
   //myservo.write(lin_srvo_goal);
-  delay(10);
+  hardware_check(hard_stat);
   nh.spinOnce();
 }
 
@@ -193,4 +197,23 @@ void light_cb( const damm_msgs::Light& msg){
    led2 = msg.led2;
   (led1) ? digitalWrite(led_1_pin, HIGH) : digitalWrite(led_1_pin, LOW);
   (led2) ? digitalWrite(led_2_pin, HIGH) : digitalWrite(led_2_pin, LOW); 
+  /* if (led1){
+    digitalWrite(led_1_pin, HIGH);
+  } else{
+    digitalWrite(led_1_pin, LOW);
+  }
+  if (led2){
+    digitalWrite(led_2_pin, HIGH);
+  } else{
+    digitalWrite(led_2_pin, LOW);
+  } */
+}
+
+bool hardware_check ( const int32_t* return_stat){
+  const char *log;
+  for( size_t n = 0; n < SRV_COUNT; n++){
+    if (return_stat[n]){
+      dxl_wb.reboot(uint8_t(n), &log);
+    }
+  }
 }
