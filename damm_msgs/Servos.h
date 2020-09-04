@@ -18,6 +18,8 @@ namespace damm_msgs
       _dxl2_type dxl2;
       typedef float _dxl3_type;
       _dxl3_type dxl3;
+      typedef float _dxl4_type;
+      _dxl4_type dxl4;
       typedef float _linear_type;
       _linear_type linear;
 
@@ -25,6 +27,7 @@ namespace damm_msgs
       dxl1(0),
       dxl2(0),
       dxl3(0),
+      dxl4(0),
       linear(0)
     {
     }
@@ -35,6 +38,7 @@ namespace damm_msgs
       offset += serializeAvrFloat64(outbuffer + offset, this->dxl1);
       offset += serializeAvrFloat64(outbuffer + offset, this->dxl2);
       offset += serializeAvrFloat64(outbuffer + offset, this->dxl3);
+      offset += serializeAvrFloat64(outbuffer + offset, this->dxl4);
       offset += serializeAvrFloat64(outbuffer + offset, this->linear);
       return offset;
     }
@@ -45,6 +49,7 @@ namespace damm_msgs
       offset += deserializeAvrFloat64(inbuffer + offset, &(this->dxl1));
       offset += deserializeAvrFloat64(inbuffer + offset, &(this->dxl2));
       offset += deserializeAvrFloat64(inbuffer + offset, &(this->dxl3));
+      offset += deserializeAvrFloat64(inbuffer + offset, &(this->dxl4));
       offset += deserializeAvrFloat64(inbuffer + offset, &(this->linear));
      return offset;
     }
