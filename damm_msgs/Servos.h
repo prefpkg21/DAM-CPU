@@ -55,7 +55,7 @@ namespace damm_msgs
     }
 
     const char * getType(){ return "damm_msgs/Servos"; };
-    const char * getMD5(){ return "6b6fea426358a73b5675cff7baddf457"; };
+    const char * getMD5(){ return "880708faca70afa51821f096d5e1f01d"; };
 
   };
 
