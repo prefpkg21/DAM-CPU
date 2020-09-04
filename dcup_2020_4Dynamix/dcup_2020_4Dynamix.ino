@@ -32,7 +32,7 @@
 #endif   
 
 #define BAUDRATE  1000000
-#define SRV_COUNT 3
+#define SRV_COUNT 4
 #define DXL_ID_1  1
 #define DXL_ID_2  2
 #define DXL_ID_3  3
