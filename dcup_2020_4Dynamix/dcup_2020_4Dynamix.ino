@@ -21,15 +21,11 @@
 
 #include <Light.h>
 #include <Servos.h>
+#include <Servfour.h>
 #include <Servo.h>
 #include <math.h> 
 #include <sensor_msgs/Joy.h>
 
-#if defined(__OPENCM904__)
-  #define DEVICE_NAME "3" //Dynamixel on Serial3(USART3)  <-OpenCM 485EXP
-#elif defined(__OPENCR__)
-  #define DEVICE_NAME ""
-#endif   
 
 #define BAUDRATE  1000000
 #define SRV_COUNT 4
@@ -52,8 +48,11 @@
 #define DXL1_HOME  2040
 #define DXL2_HOME  2040
 #define CUT_HOME  1530
-int move_strength1 = -300;
-int move_strength2 = -40;
+#if defined(__OPENCM904__)
+  #define DEVICE_NAME "3" //Dynamixel on Serial3(USART3)  <-OpenCM 485EXP
+#elif defined(__OPENCR__)
+  #define DEVICE_NAME ""
+#endif   
 
 DynamixelWorkbench dxl_wb;
 Servo myservo;
@@ -76,18 +75,22 @@ const uint8_t handler_index = 0;
 const uint8_t write_handler_index = 1;
 const uint8_t integral_handler_index = 2;
 const uint8_t return_handler_index = 3;
-const uint8_t servo_count = SRV_COUNT;
-void goal_cb( const damm_msgs::Servos& goal_msg);
+const uint8_t servo_count = SRV_COUNT; 
+
+
+
+void goal_cb( const damm_msgs::Servfour& goal_msg);
 void light_cb( const damm_msgs::Light&);
 //ROS Setup
 ros::NodeHandle nh;
-damm_msgs::Servos srvo_goal_msg;
-damm_msgs::Servos srvo_pos_msg;
+
+damm_msgs::Servfour srvo_goal_msg;
+
 damm_msgs::Light led_msg;
 
-ros::Subscriber<damm_msgs::Servos> goal_sub("damm_goal",  &goal_cb);
+ros::Subscriber<damm_msgs::Servfour> goal_sub("damm_goal",  &goal_cb);
 ros::Subscriber<damm_msgs::Light> light_sub("damm_light",  &light_cb);
-ros::Publisher  position_pub("damm_position",  &srvo_pos_msg);
+//ros::Publisher  position_pub("damm_position",  &srvo_pos_msg);
 
 
 
@@ -108,13 +111,12 @@ void setup()
 
   digitalWrite(led_1_pin, HIGH); //RED
   digitalWrite(led_2_pin, LOW);  //GREEN both Yellow
-  //nh.getHardware()->setBaud(1000000);
+  nh.getHardware()->setBaud(115200);
+  
   nh.initNode();
   //nh.advertise(position_pub);
   nh.subscribe(goal_sub);
   nh.subscribe(light_sub);
-  //Serial.begin(57600);
-   //while(!Serial); // Wait for Opening Serial Monitor
 
   const char *log;
   bool result = false;
@@ -139,7 +141,7 @@ void setup()
   //same for Read
   result = dxl_wb.addSyncReadHandler(dxl_id[0], "Present_Position", &log);
   result = dxl_wb.addSyncReadHandler(dxl_id[0], "Hardware_Error_Status", &log);
- 
+  
   result = dxl_wb.syncWrite(write_handler_index, dxl_id, SRV_COUNT, PID_position_p, 1, &log);
   result = dxl_wb.syncWrite(integral_handler_index, dxl_id, SRV_COUNT, PID_position_i, 1, &log);
   dxl_wb.syncWrite(return_handler_index, &return_delay[0], &log);
@@ -147,14 +149,16 @@ void setup()
   result = dxl_wb.syncWrite(handler_index, dxl_id, SRV_COUNT, home_position, 1, &log);
 
   myservo.write(lin_srvo_goal);
+  
 }
 
 void loop() 
 {  
+  
   const char *log;
   bool result = false;
 
-  //result = dxl_wb.syncWrite(handler_index, &goal_position[0], &log);
+  
   if (!(same_same(goal_position, present_position, SRV_COUNT, SRV_COUNT))) result = dxl_wb.syncWrite(handler_index, dxl_id, SRV_COUNT, goal_position, 1, &log);
   result = dxl_wb.syncRead(handler_index, &log);
   result = dxl_wb.getSyncReadData(handler_index, &present_position[0], &log);
@@ -166,36 +170,31 @@ void loop()
     myservo.write(lin_srvo_goal);
     lin_srvo_set = lin_srvo_goal;
   }
-  //myservo.write(lin_srvo_goal);
+  
   hardware_check(hard_stat);
+  
   nh.spinOnce();
+  
 }
 
-void goal_cb( const damm_msgs::Servos& goal_msg){
-  
-    float dxl1 = goal_msg.dxl1;
-    float dxl2 = goal_msg.dxl2;
-    float dxl3 = goal_msg.dxl3;
-    float dxl4 = goal_msg.dxl4;
-    float lin_raw    = goal_msg.linear;
-    int lin_srvo = 0;
-    if (lin_raw != 0) {
-      (lin_raw > 0) ? lin_srvo = -1 : lin_srvo = 1;  //inverse control
-    }
-    // Calculation to set the new positions 
+void goal_cb( const damm_msgs::Servfour& goal_msg){
+   
+    int linset = goal_msg.dxl3;
     //Max/min to maintain boundary
-    goal_position[0] = fmax(fmin((present_position[0] + (dxl1 * move_strength1)), DXL1_MAX),DXL1_MIN);
-    goal_position[1] = fmax(fmin((present_position[1] + (dxl2 * move_strength2)), DXL2_MAX),DXL2_MIN);
-    lin_srvo_goal = fmax(fmin(lin_srvo_goal + lin_srvo, LIN_MAX), LIN_MIN);
-    if (dxl3 == 1){
+    goal_position[0] = fmax(fmin(goal_msg.dxl1, DXL1_MAX),DXL1_MIN);
+    goal_position[1] = fmax(fmin(goal_msg.dxl2, DXL2_MAX),DXL2_MIN);
+    lin_srvo_goal = fmax(fmin(goal_msg.linear, LIN_MAX), LIN_MIN);
+    if (linset > 0){
       goal_position[2] = CUT_LEFT;
-    }else if (dxl3 == -1){
+    }else if (linset < 0){
       goal_position[2] = CUT_RIGHT;
     }else{
       goal_position[2] = CUT_HOME;
     }
 
-    goal_position[3] = fmax(fmin((present_position[3] + (dxl4 * 10)), DXL4_MAX),DXL4_MIN);
+    goal_position[3] = fmax(fmin(goal_msg.dxl4, DXL4_MAX),DXL4_MIN);
+    
+   
 }
 
 void light_cb( const damm_msgs::Light& msg){
@@ -203,16 +202,7 @@ void light_cb( const damm_msgs::Light& msg){
    led2 = msg.led2;
   (led1) ? digitalWrite(led_1_pin, HIGH) : digitalWrite(led_1_pin, LOW);
   (led2) ? digitalWrite(led_2_pin, HIGH) : digitalWrite(led_2_pin, LOW); 
-  /* if (led1){
-    digitalWrite(led_1_pin, HIGH);
-  } else{
-    digitalWrite(led_1_pin, LOW);
-  }
-  if (led2){
-    digitalWrite(led_2_pin, HIGH);
-  } else{
-    digitalWrite(led_2_pin, LOW);
-  } */
+
 }
 
 bool hardware_check ( const int32_t* return_stat){
@@ -223,3 +213,4 @@ bool hardware_check ( const int32_t* return_stat){
     }
   }
 }
+
