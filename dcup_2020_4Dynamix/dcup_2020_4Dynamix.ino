@@ -25,6 +25,7 @@
 #include <Servo.h>
 #include <math.h> 
 #include <sensor_msgs/Joy.h>
+#include <std_msgs/Empty.h>
 
 
 #define BAUDRATE  1000000
@@ -77,7 +78,10 @@ const uint8_t integral_handler_index = 2;
 const uint8_t return_handler_index = 3;
 const uint8_t servo_count = SRV_COUNT; 
 
-
+void reset_dxls( const std_msgs::Empty& rst) {
+  reboot_all_dxl();
+  init_dxl();
+}
 
 void goal_cb( const damm_msgs::Servfour& goal_msg);
 void light_cb( const damm_msgs::Light&);
@@ -90,6 +94,7 @@ damm_msgs::Light led_msg;
 
 ros::Subscriber<damm_msgs::Servfour> goal_sub("damm_goal",  &goal_cb);
 ros::Subscriber<damm_msgs::Light> light_sub("damm_light",  &light_cb);
+ros::Subscriber<std_msgs::Empty> reset_sub ("reset_dxl",  &reset_dxls);
 //ros::Publisher  position_pub("damm_position",  &srvo_pos_msg);
 
 
@@ -100,6 +105,40 @@ bool same_same (int32_t* goal, int32_t* pos, int len_g, int len_p) {
   for (size_t n = 0; n < len_g; n++) if (abs(goal[n]-pos[n]) > 15) return false;
 
   return true;
+
+}
+
+void init_dxl() {
+  const char *log;
+  bool result = false;
+
+  uint16_t model_number = 0;
+
+  result = dxl_wb.init(DEVICE_NAME, BAUDRATE, &log);
+  
+  //Ping all servos to wakeup and assign
+  for (int cnt = 0; cnt < SRV_COUNT; cnt++)
+  {
+    result = dxl_wb.ping(dxl_id[cnt], &model_number, &log);
+    
+    result = dxl_wb.jointMode(dxl_id[cnt], 0, 0, &log);
+   
+  } 
+  nh.spinOnce();
+  // Sync Handler allows writing to single register for multiple servos
+  result = dxl_wb.addSyncWriteHandler(dxl_id[0], "Goal_Position", &log);
+  dxl_wb.addSyncWriteHandler(dxl_id[0], "Position_P_Gain", &log);
+  dxl_wb.addSyncWriteHandler(dxl_id[0], "Position_I_Gain", &log);
+  dxl_wb.addSyncWriteHandler(dxl_id[0], "Return_Delay_Time", &log);
+  //same for Read
+  //result = dxl_wb.addSyncReadHandler(dxl_id[0], "Present_Position", &log);
+  //result = dxl_wb.addSyncReadHandler(dxl_id[0], "Hardware_Error_Status", &log);
+  
+  result = dxl_wb.syncWrite(write_handler_index, dxl_id, SRV_COUNT, PID_position_p, 1, &log);
+  result = dxl_wb.syncWrite(integral_handler_index, dxl_id, SRV_COUNT, PID_position_i, 1, &log);
+  dxl_wb.syncWrite(return_handler_index, &return_delay[0], &log);
+  //Set Home positions
+  result = dxl_wb.syncWrite(handler_index, dxl_id, SRV_COUNT, home_position, 1, &log);
 
 }
 
@@ -117,7 +156,9 @@ void setup()
   //nh.advertise(position_pub);
   nh.subscribe(goal_sub);
   nh.subscribe(light_sub);
-
+  nh.subscribe(reset_sub);
+  init_dxl();
+  /*
   const char *log;
   bool result = false;
 
@@ -147,7 +188,7 @@ void setup()
   dxl_wb.syncWrite(return_handler_index, &return_delay[0], &log);
   //Set Home positions
   result = dxl_wb.syncWrite(handler_index, dxl_id, SRV_COUNT, home_position, 1, &log);
-
+  */
   myservo.write(lin_srvo_goal);
   
 }
@@ -159,11 +200,13 @@ void loop()
   bool result = false;
 
   
-  if (!(same_same(goal_position, present_position, SRV_COUNT, SRV_COUNT))) result = dxl_wb.syncWrite(handler_index, dxl_id, SRV_COUNT, goal_position, 1, &log);
-  result = dxl_wb.syncRead(handler_index, &log);
-  result = dxl_wb.getSyncReadData(handler_index, &present_position[0], &log);
-  result = dxl_wb.syncRead(write_handler_index, &log);
-  result = dxl_wb.getSyncReadData(write_handler_index, &hard_stat[0], &log);
+  //if (!(same_same(goal_position, present_position, SRV_COUNT, SRV_COUNT))) result = dxl_wb.syncWrite(handler_index, dxl_id, SRV_COUNT, goal_position, 1, &log);
+  result = dxl_wb.syncWrite(handler_index, dxl_id, SRV_COUNT, goal_position, 1, &log);
+  //result = dxl_wb.syncRead(handler_index, &log);
+  
+  //result = dxl_wb.getSyncReadData(handler_index, &present_position[0], &log);
+  //result = dxl_wb.syncRead(write_handler_index, &log);
+  //result = dxl_wb.getSyncReadData(write_handler_index, &hard_stat[0], &log);
 
   //write linear Servo
   if (lin_srvo_goal != lin_srvo_set){
@@ -171,7 +214,7 @@ void loop()
     lin_srvo_set = lin_srvo_goal;
   }
   
-  hardware_check(hard_stat);
+  //hardware_check(hard_stat);
   
   nh.spinOnce();
   
@@ -204,13 +247,21 @@ void light_cb( const damm_msgs::Light& msg){
   (led2) ? digitalWrite(led_2_pin, HIGH) : digitalWrite(led_2_pin, LOW); 
 
 }
-
-bool hardware_check ( const int32_t* return_stat){
+void reboot_all_dxl(){
   const char *log;
   for( size_t n = 0; n < SRV_COUNT; n++){
+    dxl_wb.reboot(uint8_t(n), &log);
+  }
+  nh.spinOnce();
+ init_dxl();
+}
+bool hardware_check ( const int32_t* return_stat){
+  
+  for( size_t n = 0; n < SRV_COUNT; n++){
     if (return_stat[n]){
-      dxl_wb.reboot(uint8_t(n), &log);
+      reboot_all_dxl();
+      break;
     }
+    nh.spinOnce();
   }
 }
-
